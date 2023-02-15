@@ -90,6 +90,7 @@
 
         function redrawText() {
             const inputArea = document.getElementById('input_area');
+            const selectionObject = getSelectionObject(inputArea);
             inputArea.innerHTML = '';
             for(const word of window.splitText) {
                 const span = document.createElement('span');
@@ -119,7 +120,56 @@
                 }
                 inputArea.appendChild(span);
             }
+
+            getCarretToOriginalPosition(inputArea, selectionObject);
+
             cleanSuggestions();
+        }
+
+        function getSelectionObject(inputArea) {
+            let selection;
+            try {
+                selection = document.getSelection().getRangeAt(0);
+            } catch (e) {
+                return null;
+            }
+            const endContainer = selection.endContainer;
+            let endOffset = selection.endOffset;
+            if (endContainer.parentElement && endContainer.parentElement != inputArea) {
+                let totalLength = 0;
+                for (let child of endContainer.parentElement.parentElement.childNodes) {
+                    if (! child.innerText) return null;
+                    if (child == endContainer.parentElement) {
+                        break;
+                    }
+                    totalLength += child.innerText.length;
+                }
+                totalLength += endOffset;
+                endOffset = totalLength;
+            }
+            return {
+                endContainer, endOffset
+            };
+        }
+
+        function getCarretToOriginalPosition(inputArea, selectionObject) {
+            if (! selectionObject) return;
+            let totalLength = 0;
+            let offsetInChild = 0;
+            let childWithCursor = null;
+            for (let child of inputArea.childNodes) {
+                if (totalLength + child.innerText.length > selectionObject.endOffset) {
+                    offsetInChild = selectionObject.endOffset - totalLength;
+                    childWithCursor = child;
+                    break;
+                }
+                totalLength += child.innerText.length;
+            }
+            const range = document.createRange();
+            range.setStart(childWithCursor.childNodes[0], offsetInChild);
+            range.collapse(true);
+            document.getSelection().removeAllRanges();
+            document.getSelection().addRange(range);
         }
 
         async function correctText () {
