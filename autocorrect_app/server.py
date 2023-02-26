@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import heapq
 import itertools
 from flask import Flask, request, current_app
@@ -5,11 +6,12 @@ from flask_cors import CORS, cross_origin
 from nltk.metrics.distance import edit_distance, jaccard_distance
 import pandas as pd
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='', static_folder='static',)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 
 NUMBER_OF_SUGGESTIONS = 5
+MAX_SUGGESTIONS_CACHE_SIZE = 10000
 
 unigrams = pd.read_csv('../final_training_data/correct.csv')
 collocations = pd.read_csv('../final_training_data/collocations_new.csv')
@@ -28,6 +30,27 @@ for _, unigram in unigrams.iterrows():
         if len(unigram_buckets[word_cut]) < 10:
             unigram_buckets[word_cut].append([i-len(word), count, word])
 
+
+class SuggestionsCache(OrderedDict):
+    def __init__(self, max_size = 100):
+        self.max_size = max_size
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        super().move_to_end(key)
+
+        while len(self) > self.max_size:
+            oldkey = next(iter(self))
+            super().__delitem__(oldkey)
+
+    def __getitem__(self, key):
+        val = super().__getitem__(key)
+        super().move_to_end(key)
+
+        return val
+
+
+suggestions_cache = SuggestionsCache(MAX_SUGGESTIONS_CACHE_SIZE)
 
 def get_suggestions(curr_word, preceeding_word, num_suggestions):
     suggestions = [[-100, i, ''] for i in range(-num_suggestions, 0)]
@@ -110,9 +133,9 @@ def give_suggestions():
 @app.route('/correct', methods=['POST'])
 def correct_text():
     split_text = []
+    suggestions = {}
     data = request.json
     text = data['text']
-    suggestions = data['alreadyExtracted']
     tokens = text.split(' ')
     last_token = None
     for i in range(0, len(tokens)):
@@ -146,12 +169,16 @@ def correct_text():
         exists_in_dictionary = (unigrams['Word'] == token).any() or (dictionary["name"] == token).any()
         is_special_character = token in ['-', ';', ':', '*']
 
-        if not has_number and not exists_in_dictionary and not is_special_character and suggestion_key not in suggestions:
-            curr_suggestions = get_suggestions(token, last_token, NUMBER_OF_SUGGESTIONS)
-            suggestions[suggestion_key] = curr_suggestions
-            if len(curr_suggestions) < NUMBER_OF_SUGGESTIONS and '-' in token:
-                dash_suggestions = get_dash_word_suggestions(token, curr_suggestions)
-                suggestions[suggestion_key] += dash_suggestions
+        if not has_number and not exists_in_dictionary and not is_special_character:
+            if suggestion_key not in suggestions_cache:
+                curr_suggestions = get_suggestions(token, last_token, NUMBER_OF_SUGGESTIONS)
+                if len(curr_suggestions) < NUMBER_OF_SUGGESTIONS and '-' in token:
+                    dash_suggestions = get_dash_word_suggestions(token, curr_suggestions)
+                    curr_suggestions += dash_suggestions
+                suggestions_cache[suggestion_key] = curr_suggestions
+
+            suggestions[suggestion_key] = suggestions_cache[suggestion_key]
+            
         if not has_number: last_token = token
 
     return {
