@@ -2,23 +2,62 @@
 <html>
 <head>
     <style>
+        body {
+            background-image: radial-gradient(black 1px, transparent 0);
+            background-size: 30px 30px;
+            background-position: -19px -19px;
+        }
         #main {
+            width: 80%;
+            min-height: 70vh;
+            margin: 0 auto;
             text-align: center;
+            background-color: rgb(212, 232, 213);
+            border: 1px solid #aaa;
+            border-radius: 5px;
+            padding: 2px;
+        }
+        #service-header {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+        }
+        #su-logo {
+            width: 15%;
+        }
+        #service-title {
+            font-size: 1.5rem;
+        }
+        #buttons-container {
+            display: flex;
+            justify-content: left;
+            width: 90%;
+            margin: 0 auto 8px auto;
+        }
+        .control-button {
+            margin-right: 3px;
+            background-color: white;
+            padding: 5px 8px;
+            cursor: pointer;
+            border-radius: 3px;
         }
         #input_area {
             text-align: left;
-            width: 50%;
-            height: 180px;
+            width: 90%;
+            min-height: 35vh;
             margin: auto;
             border: 1px solid grey;
             white-space: pre-wrap;
             overflow-y: auto;
+            background-color: white;
+            font-size: 1.15rem;
         }
         #suggestions_container {
-            width: 30%;
+            width: 75%;
             display: flex;
             margin: auto;
             justify-content: center;
+            background-color: white;
         }
         .suggestion_element {
             flex-grow: 1;
@@ -30,6 +69,15 @@
         .underlined_word {
             text-decoration: underline;
             text-decoration-color: red;
+        }
+
+        [placeholder]:empty::before {
+            content: attr(placeholder);
+            color: #555; 
+        }
+
+        [placeholder]:empty:focus::before {
+            content: "";
         }
     </style>
     <script>
@@ -196,7 +244,6 @@
                 };
                 xhr.send(JSON.stringify({
                     text: currText,
-                    alreadyExtracted: window.suggestions
                 }));
             });
 
@@ -228,12 +275,36 @@
             redrawText();
         }
         
+        function clearText() {
+            const inputArea = document.getElementById('input_area');
+            inputArea.innerHTML = '';
+            cleanSuggestions();
+        }
+
+        function downloadText() {
+            const inputArea = document.getElementById('input_area');
+            if (! inputArea.innerText) return;
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(inputArea.innerText));
+            element.setAttribute('download', 'download_text.txt');
+
+            element.style.display = 'none';
+            document.body.appendChild(element);
+
+            element.click();
+
+            document.body.removeChild(element);
+        }
+
         window.addEventListener("load", function () {
             window.suggestions = {}
             window.splitText = []
 
             const inputArea = document.getElementById("input_area");
             inputArea.addEventListener("input", handleInput);
+
+            document.getElementById("download_button").addEventListener('click', downloadText);
+            document.getElementById("clear_button").addEventListener('click', clearText);
 
             setInterval(function () {
                 if (!window.textModifiedAt) return;
@@ -248,7 +319,17 @@
 </head>
 <body>
 <div id="main">
-    <div contenteditable="true" id="input_area"></div>
+    <header id="service-header">
+        <h1 id="service-title">
+            BGMedSpellCheck - Проверка и поправка на правопис за медицински текстове
+        </h1>
+        <img id="su-logo" src="su-logo.png"/>
+    </header>
+    <div id="buttons-container">
+        <button class="control-button" id="download_button">Свали текст</button>
+        <button class="control-button" id="clear_button">Изчисти</button>
+    </div>
+    <div contenteditable="true" id="input_area" placeholder="Моля въведете текст..."></div>
     <div id="suggestions_container"></div>
 </div>
 </body>
