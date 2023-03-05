@@ -2,20 +2,20 @@ from collections import OrderedDict
 import heapq
 import itertools
 from flask import Flask, request, current_app
-from flask_cors import CORS, cross_origin
+# from flask_cors import CORS, cross_origin
 from nltk.metrics.distance import edit_distance, jaccard_distance
 import pandas as pd
 
 app = Flask(__name__, static_url_path='', static_folder='static',)
-cors = CORS(app)
-app.config['CORS_HEADERS'] = 'Content-Type'
+# cors = CORS(app)
+# app.config['CORS_HEADERS'] = 'Content-Type'
 
 NUMBER_OF_SUGGESTIONS = 5
-MAX_SUGGESTIONS_CACHE_SIZE = 10000
+MAX_SUGGESTIONS_CACHE_SIZE = 20000
 
-unigrams = pd.read_csv('../final_training_data/correct.csv')
-collocations = pd.read_csv('../final_training_data/collocations_new.csv')
-bigrams = pd.read_csv('../final_training_data/bigrams_new.csv')
+unigrams = pd.read_csv('correct.csv')
+collocations = pd.read_csv('collocations_new.csv')
+# bigrams = pd.read_csv('../final_training_data/bigrams_new.csv')
 dictionary = pd.read_csv('dictionary_2.csv')
 
 unigram_buckets = {}
@@ -92,6 +92,7 @@ def get_suggestions(curr_word, preceeding_word, num_suggestions):
     return end_list
 
 def get_dash_word_suggestions(curr_word, curr_suggestions):
+    is_valid = False
     words = curr_word.split('-')
     suggestions_for_word = {}
     for word in words:
@@ -112,13 +113,16 @@ def get_dash_word_suggestions(curr_word, curr_suggestions):
 
     len_combinations = len(suggestion_combinations)
     if not len_combinations:
-        return []
+        return 0, []
+
+    if curr_word in suggestion_combinations:
+        is_valid = True
     
     len_suggestions = min(len_combinations, NUMBER_OF_SUGGESTIONS - len(curr_suggestions))
-    return suggestion_combinations[:len_suggestions]
+    return is_valid, suggestion_combinations[:len_suggestions]
 
 @app.route('/', methods=['GET'])
-@cross_origin()
+# @cross_origin()
 def home():
     return current_app.send_static_file('index.html')
 
@@ -132,6 +136,7 @@ def give_suggestions():
 
 @app.route('/correct', methods=['POST'])
 def correct_text():
+    global dictionary
     split_text = []
     suggestions = {}
     data = request.json
@@ -148,7 +153,7 @@ def correct_text():
 
         if has_number: last_token = None
 
-        punctuation_mark = token[-1] if token[-1] in ['.', '?', '!', ','] else None
+        punctuation_mark = token[-1] if token[-1] in ['.', '?', '!', ',', ':'] else None
         if punctuation_mark: token = token[:-1]
 
         uppercase = False
@@ -166,18 +171,23 @@ def correct_text():
             'uppercase': uppercase,
         })
         
-        exists_in_dictionary = (unigrams['Word'] == token).any() or (dictionary["name"] == token).any()
+        exists_in_dictionary = (unigrams['Word'] == token).any() or (dictionary['name'] == token).any()
         is_special_character = token in ['-', ';', ':', '*']
 
         if not has_number and not exists_in_dictionary and not is_special_character:
+            is_valid = False
             if suggestion_key not in suggestions_cache:
                 curr_suggestions = get_suggestions(token, last_token, NUMBER_OF_SUGGESTIONS)
                 if len(curr_suggestions) < NUMBER_OF_SUGGESTIONS and '-' in token:
-                    dash_suggestions = get_dash_word_suggestions(token, curr_suggestions)
-                    curr_suggestions += dash_suggestions
+                    is_valid, dash_suggestions = get_dash_word_suggestions(token, curr_suggestions)
+                    if is_valid:
+                        dictionary = dictionary.append({'name': token}, ignore_index=True)
+                    else:
+                        curr_suggestions += dash_suggestions
                 suggestions_cache[suggestion_key] = curr_suggestions
 
-            suggestions[suggestion_key] = suggestions_cache[suggestion_key]
+            if not is_valid:
+                suggestions[suggestion_key] = suggestions_cache[suggestion_key]
             
         if not has_number: last_token = token
 
